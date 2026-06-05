@@ -11,6 +11,8 @@ import fitz
 import base64
 import time
 from langchain_core.documents import Document
+import hashlib
+import json
 import os
 
 load_dotenv()
@@ -46,12 +48,39 @@ def fetch_news(company_name):
 
 
 
+def file_hashing(pdf):
+    base_name =os.path.basename(pdf.name)
+    file_path=os.path.join("UploadedPDF",base_name)
+    with open(file_path, "wb") as f:
+                f.write(pdf.getbuffer())
+    with open(file_path,"rb") as f:
+        digest=hashlib.file_digest(f,"sha256")
+        file_hash_value=digest.hexdigest()
+    hashed_file_path=os.path.join("FileHashingStored","file_hash.json")
+    try:
+        with open(hashed_file_path,"r",encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+            data={}
+    if file_hash_value in data:
+        return True,file_hash_value,data[file_hash_value]
+    else:
+        data[file_hash_value]={
+                "kb_path": os.path.join("knowledgebase", file_hash_value)
+                }
+        with open(hashed_file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+    return False,file_hash_value,data[file_hash_value]["kb_path"]
+
+
+
+
 def load_pdf(pdf):
     base_name =os.path.basename(pdf.name)
     file_path=os.path.join("UploadedPDF",base_name)
     #writing to UploadedPDF folder
-    with open(file_path, "wb") as f:
-        f.write(pdf.getbuffer())
+    # with open(file_path, "wb") as f:
+    #     f.write(pdf.getbuffer())
 
     model=genai.GenerativeModel("gemini-2.5-flash-lite")
 
@@ -86,12 +115,14 @@ def get_text_chunks(documents):
     chunks=text_splitter.split_documents(documents)
     return chunks        
 
-def get_vectorstore(text_chunks):
-    text_chunks = [chunk for chunk in text_chunks if chunk.page_content.strip()]
-    if not text_chunks:
-        raise ValueError("All chunks are empty!")
+def get_vectorstore(text_chunks,hash_exists,file_hash_value,embedded_file_path):
     embeddings=GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    if hash_exists:
+        return FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
+    path = os.path.join("knowledgebase", file_hash_value)
+    text_chunks = [chunk for chunk in text_chunks if chunk.page_content.strip()]
     vector_store=FAISS.from_documents(text_chunks,embedding=embeddings)
+    vector_store.save_local(path)
     return vector_store
 
 def get_conversational_chain():

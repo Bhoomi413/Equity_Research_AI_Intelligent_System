@@ -194,7 +194,8 @@ private/
 
 DataUploaded/
 UploadedPDF/
-
+FileHashingStored/
+knowledgebase/
 .venv/
 
 .streamlit/
