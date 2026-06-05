@@ -10,6 +10,44 @@ An AI-powered RAG application for analyzing annual reports.
 ## Technical Decisions
 
 Handling Scanned PDFs
-
 Some annual reports are distributed as scanned image-based PDFs where traditional text extraction methods return no text.
 To handle this, each page is converted into an image using PyMuPDF and processed using Gemini Vision OCR. The extracted text is then processed through the RAG pipeline for retrieval.
+
+Hash-Based Caching System
+To optimize performance and reduce cost, each PDF is identified using a SHA-256 hash. If a document has already been processed, the system skips OCR and embedding generation and directly loads the stored FAISS index.
+
+Vector Storage Strategy
+Each document’s embeddings are stored separately in a structured directory: knowledgebase for persistance across application restarts.
+
+## AI-Cost-Optimization 
+PDF Processing
+- Uses Unstructured PDF Loader for free native text extraction from digital PDFs.
+- detects whether sufficient text was extracted or not.
+- Falls back to Gemini OCR only for scanned or image-based PDFs.
+- Reduces OCR API calls, processing time, and overall AI COSTS.
+
+Hash-Based Caching System
+- each PDF is identified using a SHA-256 hash.
+- If document has already been processed,system skips OCR, embedding generation and loads directly
+- reduce multimodal input token cost
+
+
+## Project Structure
+
+```text
+project/
+├── app.py
+├── rag.py
+├── README.md
+├── UploadedPDF/
+├── FileHashingStored/
+│   └── file_hash.json
+└── knowledgebase/
+    └── <hash_value>/
+        ├── index.faiss
+        └── index.pkl
+```
+
+
+## Challenges Faced
+JSONDecodeError occurred due to empty files. To handle this, a try/except block was introduced around the JSON loading logic. If the cache file is missing, empty, or corrupted, the system safely initializes an empty dictionary instead of crashing.

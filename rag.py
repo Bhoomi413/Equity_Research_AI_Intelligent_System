@@ -13,6 +13,7 @@ import time
 from langchain_core.documents import Document
 import hashlib
 import json
+from langchain_community.document_loaders import UnstructuredPDFLoader
 import os
 
 load_dotenv()
@@ -78,32 +79,44 @@ def file_hashing(pdf):
 def load_pdf(pdf):
     base_name =os.path.basename(pdf.name)
     file_path=os.path.join("UploadedPDF",base_name)
-    #writing to UploadedPDF folder
-    # with open(file_path, "wb") as f:
-    #     f.write(pdf.getbuffer())
+    
+    unstructured_loader=UnstructuredPDFLoader(file_path=file_path, mode="paged", strategy="fast")
+    unstructured_docs = unstructured_loader.load()
+    text_pages=0
+    for unstructured_doc in unstructured_docs:
+         if len(unstructured_doc.page_content.strip())>100:
+              text_pages+=1
+    try:
+         text_pages_ratio=text_pages/len(unstructured_docs)
+    except ArithmeticError:
+         text_pages_ratio=0
+    if text_pages_ratio>0.85:
+         return unstructured_docs
 
-    model=genai.GenerativeModel("gemini-2.5-flash-lite")
 
-    pdf_doc=fitz.open(file_path)
-    docs=[]
+    else:
+        model=genai.GenerativeModel("gemini-2.5-flash-lite")
 
-    for i, page in enumerate(pdf_doc):
-        #convert page to image and dpi=150 balances OCR accuracy and payload size
-        img_bytes=page.get_pixmap(dpi=150).tobytes("png")
-        img_base64=base64.b64encode(img_bytes).decode()
-        response=model.generate_content([
-            {"inline_data": {"mime_type": "image/png", "data": img_base64}},
-            "Extract all text from this page. Return only the text."
-            ])
-        text=response.text.strip()
-        if text:
-            docs.append(Document(
-                page_content=text,
-                metadata={"page": i + 1}
-                ))
-        #wait 6 seconds as dont hit gemini free tier rate limit
-        time.sleep(6)
-    return docs
+        pdf_doc=fitz.open(file_path)
+        docs=[]
+
+        for i, page in enumerate(pdf_doc):
+            #convert page to image and dpi=150 balances OCR accuracy and payload size
+            img_bytes=page.get_pixmap(dpi=150).tobytes("png")
+            img_base64=base64.b64encode(img_bytes).decode()
+            response=model.generate_content([
+                {"inline_data": {"mime_type": "image/png", "data": img_base64}},
+                "Extract all text from this page. Return only the text."
+                ])
+            text=response.text.strip()
+            if text:
+                docs.append(Document(
+                    page_content=text,
+                    metadata={"page": i + 1}
+                    ))
+            #wait 6 seconds as dont hit gemini free tier rate limit
+            time.sleep(6)
+        return docs
 
         
 def get_text_chunks(documents):
