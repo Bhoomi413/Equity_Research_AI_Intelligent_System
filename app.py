@@ -21,7 +21,7 @@ def main():
 
                 else:
                     #get the text which is inside pdf
-                    raw_text=load_pdf(pdf)
+                    raw_text=load_pdf(pdf, company_name)
 
                     #get the text chunks
                     text_chunks=get_text_chunks(raw_text)
@@ -33,7 +33,7 @@ def main():
 
     if user_question:
         if "vectorstore" in st.session_state:
-            result = handle_userinput(user_question, st.session_state.vectorstore, company_name)
+            result = handle_userinput(user_question, st.session_state.vectorstore, company_name, text_chunks)
             st.text(result)
 
 if __name__=='__main__':

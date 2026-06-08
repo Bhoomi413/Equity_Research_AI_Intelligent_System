@@ -13,7 +13,10 @@ import time
 from langchain_core.documents import Document
 import hashlib
 import json
-from langchain_community.document_loaders import UnstructuredPDFLoader
+from langchain_pymupdf4llm import PyMuPDF4LLMLoader
+from rank_bm25 import BM25Okapi
+import numpy as np
+import streamlit as st
 import os
 
 load_dotenv()
@@ -76,25 +79,26 @@ def file_hashing(pdf):
 
 
 
-def load_pdf(pdf):
+def load_pdf(pdf, company_name):
     base_name =os.path.basename(pdf.name)
     file_path=os.path.join("UploadedPDF",base_name)
-    
-    unstructured_loader=UnstructuredPDFLoader(file_path=file_path, mode="paged", strategy="fast")
-    unstructured_docs = unstructured_loader.load()
-    text_pages=0
-    for unstructured_doc in unstructured_docs:
-         if len(unstructured_doc.page_content.strip())>100:
-              text_pages+=1
+    pymupdf_loader=PyMuPDF4LLMLoader(file_path)
+    pymupdf_docs=pymupdf_loader.load()
+    text_pages = 0
+    total_pages=0
+    for pymupdf_doc in pymupdf_docs:
+         total_pages+=1
+         if len(pymupdf_doc.page_content.strip()) > 100:
+             text_pages += 1
     try:
-         text_pages_ratio=text_pages/len(unstructured_docs)
+         text_pages_ratio=text_pages/total_pages
     except ArithmeticError:
          text_pages_ratio=0
     if text_pages_ratio>0.85:
-         return unstructured_docs
-
-
-    else:
+         return pymupdf_docs
+    
+#  OCR FALLBACK
+    else:        
         model=genai.GenerativeModel("gemini-2.5-flash-lite")
 
         pdf_doc=fitz.open(file_path)
@@ -112,7 +116,10 @@ def load_pdf(pdf):
             if text:
                 docs.append(Document(
                     page_content=text,
-                    metadata={"page": i + 1}
+                    metadata={"page": i + 1,
+                              "source": file_path,
+                              "file_path": file_path,
+                              "company": company_name}
                     ))
             #wait 6 seconds as dont hit gemini free tier rate limit
             time.sleep(6)
@@ -137,6 +144,38 @@ def get_vectorstore(text_chunks,hash_exists,file_hash_value,embedded_file_path):
     vector_store=FAISS.from_documents(text_chunks,embedding=embeddings)
     vector_store.save_local(path)
     return vector_store
+
+def bm25_index(chunks):
+    texts=[]
+    for chunk in chunks:
+        texts.append(chunk.page_content)
+    corpus_list=[text.lower().split() for text in texts]
+    return BM25Okapi(corpus_list)
+
+def reciprocalrankfusioncalc(semantic_docs, keyword_matched_docs, k=60):
+    rrf_scores={}
+    id_to_docChunk={}
+
+    for rank,doc in enumerate(semantic_docs,start=1):
+        chunk_id=doc.metadata["chunk_id"]
+        id_to_docChunk[chunk_id]=doc
+        rrf_scores[chunk_id]=1/(60+rank)
+
+    for rank,doc in enumerate(keyword_matched_docs,start=1):
+        chunk_id=doc.metadata["chunk_id"]
+        id_to_docChunk[chunk_id]= doc
+        rrf_scores[chunk_id]=rrf_scores.get(chunk_id,0)+(1/(60+rank))
+
+    Descending_sorted_doc=sorted(rrf_scores.items(),key=lambda x:x[1],reverse =True)
+    return [id_to_docChunk[chunk_id] for chunk_id,score in Descending_sorted_doc[:5]]
+
+def bm25_search(bm25_obj,text_chunks,query_tokens,n=5):
+    scores=bm25_obj.get_scores(query_tokens)
+    best_matched_index=np.argsort(scores)[::-1][:n]
+    best_matched_docs=[]
+    for i in best_matched_index:
+        best_matched_docs.append(text_chunks[i])
+    return best_matched_docs
 
 def get_conversational_chain():
     prompt=ChatPromptTemplate.from_messages([
@@ -168,16 +207,25 @@ Return ONLY a JSON object with these exact keys (no markdown, no explanation):
 
 
 #Handle Userinput
-def handle_userinput(user_question, vectorstore, company_name):
+def handle_userinput(user_question, vectorstore, company_name, text_chunks):
 
     user_question=str(user_question).strip()
-    docs=vectorstore.similarity_search(
+    semantic_docs=vectorstore.similarity_search(
         user_question,
-        k=3
+        k=5
     )
 
+    query_tokens=user_question.lower().split()
+    bm25_obj=bm25_index(text_chunks)
+    keyword_matched_docs=bm25_search(bm25_obj,text_chunks, query_tokens,n=5)
+    print("semantic doc metadata:", semantic_docs[0].metadata)
+    print("bm25 doc metadata:", keyword_matched_docs[0].metadata)
+    # st.write("semantic metadata:", semantic_docs[0].metadata)
+    # st.write("bm25 metadata:", keyword_matched_docs[0].metadata)
+    final_fused_top_docs = reciprocalrankfusioncalc(semantic_docs, keyword_matched_docs, k=60)
+
     context = "\n\n".join(
-        [doc.page_content for doc in docs]
+        [doc.page_content for doc in final_fused_top_docs]
     )
 
     chain=get_conversational_chain()

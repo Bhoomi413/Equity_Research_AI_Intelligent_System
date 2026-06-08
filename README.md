@@ -19,12 +19,19 @@ To optimize performance and reduce cost, each PDF is identified using a SHA-256 
 Vector Storage Strategy
 Each document’s embeddings are stored separately in a structured directory: knowledgebase for persistance across application restarts.
 
+PyMuPDF4LLM was used instead of PyMuPDF
+The dataset used in this project consists of company annual reports, which contain structured Financial statements, Multi-column layouts, Tabular data. PyMuPDF4LLM used as it preserves layout and structure of complex PDFs 
+
+hybrid retrieval 
+implement manual reciprocal rank fusion based hybrid retrieval, with chunk id maetadata mapping and custom fusion logic replacing LangChain EnsembleRetriever, combines BM25 (keyword-based search) and semantic search (embeddings) to improve document retrieval accuracy.
+
 ## AI-Cost-Optimization 
 PDF Processing
-- Uses Unstructured PDF Loader for free native text extraction from digital PDFs.
+- Uses PyMuPDF4LLM PDF Loader for free native text extraction from digital PDFs.
 - detects whether sufficient text was extracted or not.
 - Falls back to Gemini OCR only for scanned or image-based PDFs.
 - Reduces OCR API calls, processing time, and overall AI COSTS.
+- The system follows a HYBRID INGESTION approach to handle different types of PDF
 
 Hash-Based Caching System
 - each PDF is identified using a SHA-256 hash.
