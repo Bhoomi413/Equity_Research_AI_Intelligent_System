@@ -17,6 +17,7 @@ from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from rank_bm25 import BM25Okapi
 import numpy as np
 import streamlit as st
+import pickle
 import os
 
 load_dotenv()
@@ -138,12 +139,22 @@ def get_text_chunks(documents):
 def get_vectorstore(text_chunks,hash_exists,file_hash_value,embedded_file_path):
     embeddings=GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     if hash_exists:
-        return FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
+        vector_store=FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
+        chunks_file = os.path.join(embedded_file_path, "chunks.pkl")
+
+        with open(chunks_file, "rb") as f:
+            text_chunks = pickle.load(f)
+
+        return vector_store, text_chunks
+        # return FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
+
     path = os.path.join("knowledgebase", file_hash_value)
     text_chunks = [chunk for chunk in text_chunks if chunk.page_content.strip()]
     vector_store=FAISS.from_documents(text_chunks,embedding=embeddings)
     vector_store.save_local(path)
-    return vector_store
+    with open(os.path.join(path, "chunks.pkl"), "wb") as f:
+        pickle.dump(text_chunks, f)
+    return vector_store, text_chunks
 
 def bm25_index(chunks):
     texts=[]
@@ -214,7 +225,6 @@ def handle_userinput(user_question, vectorstore, company_name, text_chunks):
         user_question,
         k=5
     )
-
     query_tokens=user_question.lower().split()
     bm25_obj=bm25_index(text_chunks)
     keyword_matched_docs=bm25_search(bm25_obj,text_chunks, query_tokens,n=5)
@@ -238,4 +248,26 @@ def handle_userinput(user_question, vectorstore, company_name, text_chunks):
         "Related_latest_news": fetched_news,
         "context": context
         })
-    return result
+    
+    # ADDING CITATIONS
+    sources = []
+    for doc in final_fused_top_docs:
+        source = doc.metadata.get("source", "unknown")
+        page_no = doc.metadata.get("page", 0)
+
+        file_name = os.path.basename(source)
+
+        print("SOURCE TYPE:", type(source))
+        print("SOURCE VALUE:", source)
+
+        sources.append({
+                "file": file_name,
+                "page": page_no,
+                "preview": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                "chunk": doc.page_content
+            })
+
+    return {
+        "content": result,
+        "citations": sources
+    }

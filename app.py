@@ -17,24 +17,33 @@ def main():
                 #check does file already embedded
                 hash_exists,file_hash_value,embedded_file_path=file_hashing(pdf)
                 if hash_exists:
-                    vectorstore=get_vectorstore(text_chunks=None, hash_exists=True,file_hash_value=file_hash_value,embedded_file_path= embedded_file_path)
-
+                    vectorstore,text_chunks=get_vectorstore(text_chunks=None, hash_exists=True,file_hash_value=file_hash_value,embedded_file_path= embedded_file_path)
+                    for id, chunk in enumerate(text_chunks):
+                        chunk.metadata['chunk_id'] = id
                 else:
                     #get the text which is inside pdf
                     raw_text=load_pdf(pdf, company_name)
 
                     #get the text chunks
                     text_chunks=get_text_chunks(raw_text)
+                    for id, chunk in enumerate(text_chunks):
+                        chunk.metadata['chunk_id']=id
 
                     #get the embeddings and vector store
-                    vectorstore=get_vectorstore(text_chunks,hash_exists,file_hash_value,embedded_file_path)
+                    vectorstore,text_chunks=get_vectorstore(text_chunks,hash_exists,file_hash_value,embedded_file_path)
 
                     st.session_state.vectorstore = vectorstore
+                    st.session_state.text_chunks=text_chunks
+
 
     if user_question:
         if "vectorstore" in st.session_state:
-            result = handle_userinput(user_question, st.session_state.vectorstore, company_name, text_chunks)
-            st.text(result)
+            response = handle_userinput(user_question, st.session_state.vectorstore, company_name, st.session_state.text_chunks)
+            st.text(response['content'])
+            for citation in response['citations']:
+                st.write(f"file-{citation['file']} page-{citation['page']}\npreview-{citation['preview']}")
+                with st.expander("View full source chunk"):
+                    st.write(citation["chunk"])
 
 if __name__=='__main__':
     main()
