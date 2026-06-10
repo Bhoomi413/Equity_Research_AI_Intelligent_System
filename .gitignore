@@ -93,6 +93,8 @@ celerybeat.pid
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3
+*.db
  
 # Flask
 instance/
@@ -159,6 +161,7 @@ vectorstore/
 # VS CODE
 # ============================================================
 .vscode/
+.idea/
 # Uncomment below to share workspace settings with teammates:
 # !.vscode/settings.json
 # !.vscode/launch.json
@@ -207,6 +210,8 @@ knowledgebase/
 *.pyo
 
 *.pyc
+
+__pycache__/
 
 desktop.ini
 
