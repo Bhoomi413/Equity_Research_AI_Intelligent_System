@@ -43,16 +43,30 @@ Hash-Based Caching System
 
 ```text
 project/
-├── app.py
-├── rag.py
-├── README.md
-├── UploadedPDF/
-├── FileHashingStored/
-│   └── file_hash.json
-└── knowledgebase/
-    └── <hash_value>/
-        ├── index.faiss
-        └── index.pkl
+├── backend/
+│   ├── main.py
+│   ├── models.py
+│   ├── __init__.py
+│   ├── database.py
+│   ├── auth.py
+│   └── rag/
+│       ├── __init__.py
+│       └── rag.py
+│
+├── frontend/
+│   └── app.py
+│
+├── knowledgebase/
+│   └── userid/
+│       ├── index.pkl
+│       ├── index.faiss
+│       └── chunks.pkl
+│
+├── uploadedPDF/
+│
+└── .gitignore
+
+
 ```
 
 
