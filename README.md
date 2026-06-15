@@ -39,36 +39,16 @@ Hash-Based Caching System
 - reduce multimodal input token cost
 
 
-## Project Structure
-
-```text
-project/
-├── backend/
-│   ├── main.py
-│   ├── models.py
-│   ├── __init__.py
-│   ├── database.py
-│   ├── auth.py
-│   └── rag/
-│       ├── __init__.py
-│       └── rag.py
-│
-├── frontend/
-│   └── app.py
-│
-├── knowledgebase/
-│   └── userid/
-│       ├── index.pkl
-│       ├── index.faiss
-│       └── chunks.pkl
-│
-├── uploadedPDF/
-│
-└── .gitignore
 
 
-```
 
 
 ## Challenges Faced
 JSONDecodeError occurred due to empty files. To handle this, a try/except block was introduced around the JSON loading logic. If the cache file is missing, empty, or corrupted, the system safely initializes an empty dictionary instead of crashing.
+
+## Repository Status & Access
+
+This project is actively used as part of my professional portfolio and B.Tech major project evaluation. 
+
+**Recruiters & Hiring Managers:** You are welcome to clone, explore, and test the RAG pipeline. If you have questions about the system architecture or AI integration, feel free to reach out!
+**Students & Peer Reviewers:** This code is indexed for academic evaluation. Please use it for inspiration or reference only. To maintain academic integrity, do not copy or replicate these files for university submissions.
