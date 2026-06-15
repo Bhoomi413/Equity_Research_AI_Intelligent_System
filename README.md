@@ -39,6 +39,36 @@ Hash-Based Caching System
 - reduce multimodal input token cost
 
 
+## Project Structure
+
+```text
+project/
+├── backend/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── database.py
+│   ├── auth.py
+│   └── rag/
+│       ├── __init__.py
+│       └── rag.py
+│
+├── frontend/
+│   └── app.py
+│
+├── UploadedPDF/
+│
+├── knowledgebase/
+│   └── <user_id>/
+│       └── <hash_value>/
+│           ├── chunks.pkl
+│           ├── index.faiss
+│           └── index.pkl
+│
+├── requirements.txt
+├── .env.example
+└── .gitignore
+```
 
 
 
