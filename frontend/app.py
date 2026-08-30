@@ -110,27 +110,52 @@ def show_main_app():
  
         st.markdown("---")
         st.subheader("Previously uploaded docs")
-        if st.button("Refresh list"):
-            try:
-                resp = requests.get(
-                    f"{API_BASE}/documents/my",
-                    headers=auth_headers(),
-                    timeout=30,
-                )
-                if resp.status_code == 200:
-                    docs = resp.json()
-                    if docs:
-                        for d in docs:
-                            label = f"{d['filename']} ({d['company_name']})"
-                            if st.button(label, key=f"doc_{d['id']}"):
-                                st.session_state["file_hash"] = d["file_hash"]
-                                st.session_state["company_name"] = d["company_name"]
-                                st.info(f"Switched to: {d['filename']}")
-                    else:
-                        st.write("No documents uploaded yet.")
-            except requests.exceptions.ConnectionError:
-                st.error("Cannot reach backend.")
- 
+
+        if "delete_message" in st.session_state:
+            st.success(st.session_state.pop("delete_message"))
+
+        try:
+            resp = requests.get(
+                f"{API_BASE}/documents/my",
+                headers=auth_headers(),
+                timeout=30,
+            )
+            docs = resp.json() if resp.status_code == 200 else []
+
+            if docs:
+                for d in docs:
+                    col1, col2 = st.columns([1, 1], gap="small")
+                    with col1:
+                        label = f"{d['filename']} ({d['company_name']})"
+                        if st.button(label, key=f"doc_{d['id']}"):
+                            st.session_state["document_id"] = d["id"]
+                            st.session_state["file_hash"] = d["file_hash"]
+                            st.session_state["company_name"] = d["company_name"]
+                            st.info(f"Switched to: {d['filename']}")
+
+                    with col2:
+                        if st.button("Delete", key=f"delete_{d['id']}"):
+                            del_resp = requests.delete(
+                                f"{API_BASE}/delete/document/{d['id']}",
+                                headers=auth_headers(),
+                                timeout=30,
+                            )
+                            if del_resp.status_code == 200:
+                                if st.session_state.get("document_id") == d["id"]:
+                                    st.session_state.pop("document_id", None)
+                                    st.session_state.pop("file_hash", None)
+                                    st.session_state.pop("company_name", None)
+                                st.session_state["delete_message"] = f"{d['filename']} deleted successfully."
+                                st.rerun()
+                            elif del_resp.status_code == 401:
+                                st.error("Session expired. Please log in again.")
+                            else:
+                                st.error(del_resp.json().get("detail", "Failed to delete document"))
+            else:
+                st.write("No documents uploaded yet.")
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot reach backend.")
+        
     if user_question:
         if "file_hash" not in st.session_state:
             st.warning("Please upload and process a document first.")

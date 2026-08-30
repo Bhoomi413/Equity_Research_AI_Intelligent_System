@@ -186,7 +186,36 @@ def list_my_documents(current_user: User = Depends(get_current_user), db: Sessio
         }
         for d in docs
     ]
- 
+
+@app.delete("/delete/document/{document_id}")
+def delete_document(document_id:int,current_user:User=Depends(get_current_user), db:Session=Depends(get_db)):
+    doc=db.query(Document).filter(Document.user_id==current_user.id,Document.id==document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    file_hash=doc.file_hash
+    user_pdf_dir= os.path.join("UploadedPDF", f"user_{current_user.id}", file_hash)
+    kb_path=doc.kb_path
+
+    try:
+        import shutil
+        if os.path.exists(user_pdf_dir):
+                shutil.rmtree(user_pdf_dir)   # remove orphaned PDF
+        if os.path.exists(kb_path):
+                shutil.rmtree(kb_path)         #remove partial knowledgebase
+        db.delete(doc)
+        db.commit()
+
+        return {
+            "message": "Document deleted successfully","document_id": document_id
+          }
+    
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500,detail="Failed to delete document")
+
+
+
+
  
 @app.post("/query")
 def query_document(
