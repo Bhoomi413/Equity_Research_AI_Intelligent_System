@@ -101,7 +101,7 @@ def show_main_app():
                             data = resp.json()
                             st.session_state["file_hash"] = data["file_hash"]
                             st.session_state["company_name"] = company_name
-                            cached = "Loaded from cache" if data["hash_exists"] else "Embedded and saved"
+                            cached = "Loaded from cache, " if data["hash_exists"] else "Embedded and saved"
                             st.success(f"{cached} chunks ready")
                         else:
                             st.error(resp.text)
@@ -126,7 +126,11 @@ def show_main_app():
                 for d in docs:
                     col1, col2 = st.columns([1, 1], gap="small")
                     with col1:
-                        label = f"{d['filename']} ({d['company_name']})"
+                        if d["file_hash"] == st.session_state.get("file_hash"):
+                            label = f"🩷 Current document : {d['filename']} ({d['company_name']})"
+                        else:
+                            label = f"{d['filename']} ({d['company_name']})"
+
                         if st.button(label, key=f"doc_{d['id']}"):
                             st.session_state["document_id"] = d["id"]
                             st.session_state["file_hash"] = d["file_hash"]
