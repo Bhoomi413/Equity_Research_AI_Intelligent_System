@@ -186,6 +186,10 @@ def get_conversational_chain():
 Based on the annual report excerpts and recent news provided, generate a structured research report.
 
 Return ONLY a JSON object with these exact keys (no markdown, no explanation):
+IMPORTANT: Before answering, check whether the "Context" actually contains meaningful annual-report / financial content (business description, financial figures, MD&A, risk factors, etc.).
+- If the Context is empty, irrelevant, or does not contain real financial/business content, you MUST NOT invent numbers or a verdict.
+
+- Never fabricate figures, company facts, or a BUY/HOLD/CAUTION verdict that are not directly supported by the Context.
 
 {{
   "snapshot": "2-3 sentence company overview from the report",
