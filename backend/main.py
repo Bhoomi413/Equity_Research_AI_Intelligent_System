@@ -24,7 +24,7 @@ from backend.rag.rag import load_pdf, get_text_chunks, handle_userinput, get_vec
 
 load_dotenv()
 
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine) 
 
 app = FastAPI(title="Equity RAG API")
 
@@ -125,13 +125,13 @@ def upload_document(
         }
  
     #save PDF to disk
-    os.makedirs("UploadedPDF", exist_ok=True)
-    save_path = os.path.join("UploadedPDF", file.filename)
+    user_pdf_dir =os.path.join("UploadedPDF",f"user_{current_user.id}",file_hash)
+    os.makedirs(user_pdf_dir, exist_ok=True)
+    safe_filename = os.path.basename(file.filename) #to prevent path traversal attack
+    save_path = os.path.join(user_pdf_dir,safe_filename)
     with open(save_path, "wb") as f:
         f.write(pdf_bytes)
- 
-    exists = bool(existing)
-
+  
     #create kb folder 
     os.makedirs(kb_path, exist_ok=True)
     import traceback
@@ -141,10 +141,16 @@ def upload_document(
         print("STEP 2")
         text_chunks = get_text_chunks(raw_docs)
         print("STEP 3")
-        vectorstore=get_vectorstore(text_chunks, exists, kb_path )
+        get_vectorstore(text_chunks, False, kb_path )
         print("STEP 4")
     except Exception as e:
         traceback.print_exc()
+        import shutil
+        if os.path.exists(user_pdf_dir):
+            shutil.rmtree(user_pdf_dir)   # remove orphaned PDF
+        if os.path.exists(kb_path):
+            shutil.rmtree(kb_path)         #remove partial knowledgebase
+        raise HTTPException(status_code=500, detail="Document processing failed")
     doc = Document(
         user_id=current_user.id,
         filename=file.filename,
@@ -194,8 +200,7 @@ def query_document(
         .filter(
             Document.user_id == current_user.id,
             Document.file_hash == payload.file_hash,
-        )
-        .first()
+        ).first()
     )
     if not doc_record:
         raise HTTPException(

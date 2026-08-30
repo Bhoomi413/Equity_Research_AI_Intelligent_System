@@ -3,27 +3,25 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
-import google.generativeai as genai
+# import google.generativeai as genai
+from google import genai
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 import requests
-import fitz
+import pymupdf
 import base64
 import time
 from langchain_core.documents import Document
-import hashlib
-import json
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from rank_bm25 import BM25Okapi
 import numpy as np
-import streamlit as st
 import pickle
 import os
 
 load_dotenv()
 os.getenv("NEWS_API_KEY")
 os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# genai.configure(api_key=os.getenv("GOOGLE_API_KEY")) 
 my_news_api = os.getenv("NEWS_API_KEY")
 
 def fetch_news(company_name):
@@ -53,9 +51,7 @@ def fetch_news(company_name):
 
 
 
-def load_pdf(pdf_path, company_name):
-    base_name =os.path.basename(pdf_path)
-    file_path=os.path.join("UploadedPDF",base_name)
+def load_pdf(file_path, company_name):
     pymupdf_loader=PyMuPDF4LLMLoader(file_path)
     pymupdf_docs=pymupdf_loader.load()
     text_pages = 0
@@ -72,21 +68,33 @@ def load_pdf(pdf_path, company_name):
          return pymupdf_docs
     
 #  OCR FALLBACK
-    else:        
-        model=genai.GenerativeModel("gemini-2.5-flash-lite")
-
-        pdf_doc=fitz.open(file_path)
+    else:    
+        client = genai.Client()
+        pdf_doc=pymupdf.open(file_path)
         docs=[]
 
         for i, page in enumerate(pdf_doc):
             #convert page to image and dpi=150 balances OCR accuracy and payload size
             img_bytes=page.get_pixmap(dpi=150).tobytes("png")
             img_base64=base64.b64encode(img_bytes).decode()
-            response=model.generate_content([
+            response=client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=[
+            {"parts": [
                 {"inline_data": {"mime_type": "image/png", "data": img_base64}},
-                "Extract all text from this page. Return only the text."
-                ])
-            text=response.text.strip()
+                {"text": "Extract all text from this page. Return only the text."}
+            ]}])
+
+
+            # text=response.text.strip()
+
+            if response and response.text:
+                text = response.text.strip()
+            else:
+                text = ""
+                print("Warning: The LLM returned an empty or invalid response.")
+
+
             if text:
                 docs.append(Document(
                     page_content=text,
@@ -97,6 +105,11 @@ def load_pdf(pdf_path, company_name):
                     ))
             #wait 6 seconds as dont hit gemini free tier rate limit
             time.sleep(6)
+
+        # print(f"OCR extracted {len(docs)} pages")
+        # if len(docs) == 0:  
+            # raise ValueError("OCR produced zero pages. Check Gemini response format.")
+        
         return docs
 
         
@@ -121,7 +134,7 @@ def get_vectorstore(text_chunks,hash_exists,embedded_file_path):
         return vector_store, text_chunks
         # return FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
 
-    # path = os.path.join("knowledgebase", file_hash_value)
+    #path is os.path.join("knowledgebase", user_id, file_hash_value)
     path = embedded_file_path
     print("SAVING TO:", path)
     os.makedirs(path, exist_ok=True)

@@ -57,7 +57,9 @@ project/
 │   └── app.py
 │
 ├── UploadedPDF/
-│
+│   └── <user_id>/
+│       └── <hash_value>
+│           └── filename.pdf
 ├── knowledgebase/
 │   └── <user_id>/
 │       └── <hash_value>/
@@ -71,8 +73,6 @@ project/
 ```
 
 
-
-
 ## Challenges Faced
 JSONDecodeError occurred due to empty files. To handle this, a try/except block was introduced around the JSON loading logic. If the cache file is missing, empty, or corrupted, the system safely initializes an empty dictionary instead of crashing.
 
@@ -82,3 +82,7 @@ This project is actively used as part of my professional portfolio and B.Tech ma
 
 **Recruiters & Hiring Managers:** You are welcome to clone, explore, and test the RAG pipeline. If you have questions about the system architecture or AI integration, feel free to reach out!
 **Students & Peer Reviewers:** This code is indexed for academic evaluation. Please use it for inspiration or reference only. To maintain academic integrity, do not copy or replicate these files for university submissions.
+
+
+### Future Improvements
+- Add Alembic for database schema migrations
