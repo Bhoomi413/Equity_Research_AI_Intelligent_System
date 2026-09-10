@@ -1,43 +1,86 @@
 # Equity Research Intelligent System
 
-An AI-powered RAG application for analyzing annual reports.
+A RAG application designed to ingest multi-page corporate annual reports, cross-reference with real-time market news, and form institutional-grade investment views.
 
-## Features
+## Working
 - User uploads annual report
 - Cross reference with today's news
 - Then form an investment view
 
 ## Technical Decisions
 
-Handling Scanned PDFs
-Some annual reports are distributed as scanned image-based PDFs where traditional text extraction methods return no text.
-To handle this, each page is converted into an image using PyMuPDF and processed using Gemini Vision OCR. The extracted text is then processed through the RAG pipeline for retrieval.
+### 1. Vector Storage Strategy
+* Each document’s embeddings are stored separately in a structured directory: knowledgebase for persistence across application restarts.
 
-Hash-Based Caching System
-To optimize performance and reduce cost, each PDF is identified using a SHA-256 hash. If a document has already been processed, the system skips OCR and embedding generation and directly loads the stored FAISS index.
+### 2. Hybrid Retrieval 
+* implements manual reciprocal rank fusion based hybrid retrieval, with chunk id maetadata mapping and custom fusion logic replacing LangChain EnsembleRetriever, combines BM25 (keyword-based search) and semantic search (embeddings) to improve document retrieval accuracy.
 
-Vector Storage Strategy
-Each document’s embeddings are stored separately in a structured directory: knowledgebase for persistance across application restarts.
+### 3. Hash-Based Caching System
+* each PDF is identified using a SHA-256 hash.
+* If document has already been processed,system skips embedding generation and loads directly
+* This avoids repeated embedding computation and reduces document re-processing latency.
 
-PyMuPDF4LLM was used instead of PyMuPDF
-The dataset used in this project consists of company annual reports, which contain structured Financial statements, Multi-column layouts, Tabular data. PyMuPDF4LLM used as it preserves layout and structure of complex PDFs 
+### 4. Embedding Layer
 
-hybrid retrieval 
-implement manual reciprocal rank fusion based hybrid retrieval, with chunk id maetadata mapping and custom fusion logic replacing LangChain EnsembleRetriever, combines BM25 (keyword-based search) and semantic search (embeddings) to improve document retrieval accuracy.
+* Switched from Gemini embeddings to a local HuggingFace model (all-MiniLM-L6-v2) to eliminate dependency on external embedding API calls, reduce latency, and avoid API quota issues during embedding. The tradeoff is vector dimensions (384 vs 3072) but all-MiniLM-L6-v2 is a well established model for semantic similarity tasks.
 
-## AI-Cost-Optimization 
-PDF Processing
-- Uses PyMuPDF4LLM PDF Loader for free native text extraction from digital PDFs.
-- detects whether sufficient text was extracted or not.
-- Falls back to Gemini OCR only for scanned or image-based PDFs.
-- Reduces OCR API calls, processing time, and overall AI COSTS.
-- The system follows a HYBRID INGESTION approach to handle different types of PDF
+### 5. Real-Time Market Intelligence Integration
+* Correlates report data with real-time news retrieval to highlight divergence between corporate management guidance and current market realities.
 
-Hash-Based Caching System
-- each PDF is identified using a SHA-256 hash.
-- If document has already been processed,system skips OCR, embedding generation and loads directly
-- reduce multimodal input token cost
+### 5. Eliminating OCR
 
+Annual reports filed with SEBI (India) and SEC (US) are mandatorily submitted as electronic documents, meaning they are born-digital PDFs where PyMuPDF extracts text directly without OCR.
+
+OCR using Gemini Vision was added under an incorrect assumption about document format. Removed to eliminate processing delays and external API dependency during document loading.
+
+### 6. Authentication & Per-User Data Isolation
+
+* JWT-based authentication using OAuth2 with bcrypt password hashing — passwords are never stored in plain text
+* Every protected API route verifies the JWT server-side; `user_id` is always derived from the verified token, never trusted from the frontend
+* PostgreSQL stores user accounts and document metadata with a foreign key ownership constraint on every document record
+* All user data is isolated at the filesystem level — PDFs and vector stores are stored under user-scoped paths (`UploadedPDF/user_{id}/` and `knowledgebase/user_{id}/`)
+* Every query verifies both JWT identity and database ownership before loading any embeddings — a user cannot access another user's documents even with a known file hash
+
+---
+
+## Ingestion Pipeline: Evolution & Benchmarking
+
+The ingestion engine processes multi-page corporate annual report containing dense financial statements, multi-column reading flows, and tabular data. 
+
+Between v1.0 and v2.0, the pipeline underwent significant performance profiling and refactoring to eliminate API bottlenecks and reduce end-to-end ingestion latency.
+
+### Pipeline Architecture Comparison
+
+| Metric / Parameter | v1.0 (Prototype) | v2.0 (Refactor) |
+| :--- | :--- | :--- |
+| **Primary Parser** | `PyMuPDF4LLM` | Native `PyMuPDF` |
+| **PDF Parsing/Extraction Latency** | 10.11s–92.09s for tested 28–123 page PDFs | 0.36–0.61s for tested PDFs |
+| **Fallback Mechanism** | Vision LLM OCR via API | None (strict digital PDF focus) |
+| **Failure Modes** | HTTP timeouts, 429 Quota exhaustion | No external API/network dependency; avoids API rate limits and network failures |
+
+---
+
+#### PDF Parsing/Extraction Latency Benchmark
+| **Document Size** | **PyMuPDF4LLM Loader** | **Native PyMuPDF Loader** | **Speedup** |
+|---|---:|---:|---:|
+| **28 Pages** | 10.11s | **0.36s** | **28×** |
+| **92 Pages** | 72.17s | **1.36s** | **53×** |
+| **123 Pages** | 92.09s | **0.61s** | **151x** |
+**Each PDF was processed 3 times per implementation and the reported value is the arithmetic mean of the three runs.**
+
+### Engineering Decisions & Post-Mortem
+
+#### 1. Transition from `PyMuPDF4LLM` to Native `PyMuPDF`
+* **Initial Hypothesis**: `PyMuPDF4LLM` was chosen to preserve layout and structure of complex PDFs for RAG retrieval.
+* **Bottleneck**: Benchmark testing revealed up to 80+ seconds on 100+ page reports triggering latency.
+* **Resolution**: Replaced with native `PyMuPDF` extraction.
+
+#### 2. Deprecation of Vision-Based OCR Fallback
+* **Initial Hypothesis**: Annual reports might contain scanned/rasterized pages requiring multimodal LLM extraction (Gemini Vision).
+* **Bottleneck**: Real-world audit of corporate filings showed most of the modern reports are digitally rendered vector PDFs. It triggeres massive latencies and  timeout errors.
+* **Resolution**: Stripped external OCR dependencies from the primary parsing path. Eliminating the Vision OCR ingestion makes the document loading deterministic, free from external API COST, and offline-capable.
+
+---
 
 ## Project Structure
 
@@ -72,9 +115,35 @@ project/
 └── .gitignore
 ```
 
+### Getting Started
+#### Prerequisites
+* Python 3.14
+* Google Gemini API Key
 
-## Challenges Faced
-JSONDecodeError occurred due to empty files. To handle this, a try/except block was introduced around the JSON loading logic. If the cache file is missing, empty, or corrupted, the system safely initializes an empty dictionary instead of crashing.
+#### Installation and Setup
+
+1. **Clone the repository:**
+git clone https://github.com/Bhoomi413/Equity_Research_AI_Intelligent_System.git
+cd Equity_Research_AI_Intelligent_System
+
+
+2. **Set up a virtual environment:**
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+
+3. **Configure environment variables:**
+copy .env.example .env
+Add your Google Gemini API key to the .env file.
+
+4. **Launch the application:**
+* **Terminal 1: Backend**
+uvicorn backend.main:app --reload
+
+* **Terminal 2: Frontend**
+streamlit run frontend/app.py
+
+---
 
 ## Repository Status & Access
 

@@ -52,66 +52,18 @@ def fetch_news(company_name):
 
 
 def load_pdf(file_path, company_name):
-    pymupdf_loader=PyMuPDF4LLMLoader(file_path)
-    pymupdf_docs=pymupdf_loader.load()
-    text_pages = 0
-    total_pages=0
-    for pymupdf_doc in pymupdf_docs:
-         total_pages+=1
-         if len(pymupdf_doc.page_content.strip()) > 100:
-             text_pages += 1
-    try:
-         text_pages_ratio=text_pages/total_pages
-    except ArithmeticError:
-         text_pages_ratio=0
-    if text_pages_ratio>0.85:
-         return pymupdf_docs
-    
-#  OCR FALLBACK
-    else:    
-        client = genai.Client()
-        pdf_doc=pymupdf.open(file_path)
-        docs=[]
+    docs = []
 
-        for i, page in enumerate(pdf_doc):
-            #convert page to image and dpi=150 balances OCR accuracy and payload size
-            img_bytes=page.get_pixmap(dpi=150).tobytes("png")
-            img_base64=base64.b64encode(img_bytes).decode()
-            response=client.models.generate_content(
-                model="gemini-2.5-flash-lite",
-                contents=[
-            {"parts": [
-                {"inline_data": {"mime_type": "image/png", "data": img_base64}},
-                {"text": "Extract all text from this page. Return only the text."}
-            ]}])
+    with pymupdf.open(file_path) as pdf_doc:
+        for i, page_obj in enumerate(pdf_doc):
+            page_num = i + 1
+            extracted_text = page_obj.get_text().strip()
+            docs.append(Document(
+                    page_content=extracted_text,
+                    metadata={"page": page_num, "source": file_path, "file_path": file_path, "company": company_name}
+                ))
 
-
-            # text=response.text.strip()
-
-            if response and response.text:
-                text = response.text.strip()
-            else:
-                text = ""
-                print("Warning: The LLM returned an empty or invalid response.")
-
-
-            if text:
-                docs.append(Document(
-                    page_content=text,
-                    metadata={"page": i + 1,
-                              "source": file_path,
-                              "file_path": file_path,
-                              "company": company_name}
-                    ))
-            #wait 6 seconds as dont hit gemini free tier rate limit
-            time.sleep(6)
-
-        # print(f"OCR extracted {len(docs)} pages")
-        # if len(docs) == 0:  
-            # raise ValueError("OCR produced zero pages. Check Gemini response format.")
-        
-        return docs
-
+    return docs
         
 def get_text_chunks(documents):
     text_splitter= RecursiveCharacterTextSplitter(
@@ -123,7 +75,9 @@ def get_text_chunks(documents):
     return chunks        
 
 def get_vectorstore(text_chunks,hash_exists,embedded_file_path):
-    embeddings=GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    from langchain_huggingface import HuggingFaceEmbeddings
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    # embeddings=GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     if hash_exists:
         vector_store=FAISS.load_local(embedded_file_path,embeddings, allow_dangerous_deserialization=True)
         chunks_file = os.path.join(embedded_file_path, "chunks.pkl")
