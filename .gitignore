@@ -197,6 +197,7 @@ private/
 
 DataUploaded/
 UploadedPDF/
+testing_files/
 FileHashingStored/
 knowledgebase/
 .venv/
