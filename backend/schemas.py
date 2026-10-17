@@ -17,3 +17,14 @@ class QueryRequest(BaseModel):
     question: str
     company_name: str
     file_hash: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class NewConversationRequest(BaseModel):
+    document_id: int
+ 
+class QueryRequest(BaseModel):
+    question: str

@@ -9,6 +9,7 @@ from backend.models import Base
 
 load_dotenv()
 
+# Base.metadata.drop_all(engine)
 Base.metadata.create_all(bind=engine) 
 
 app = FastAPI(title="Equity RAG API")
@@ -20,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from .routes import auth,documents,query
+from .routes import auth,documents,conversations
 app.include_router(auth.router)
 app.include_router(documents.router)
-app.include_router(query.router)
+app.include_router(conversations.router)

@@ -133,26 +133,55 @@ def bm25_search(bm25_obj,text_chunks,query_tokens,n=5):
         best_matched_docs.append(text_chunks[i])
     return best_matched_docs
 
+
+def rewrite_query(original_question: str, history: list) -> str:
+    if not history:
+        return original_question
+
+    history_text = ""
+    for msg in history:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        history_text += f"{role}: {msg['content']}\n"
+
+    rewrite_prompt = ChatPromptTemplate.from_messages([
+        ("system", """
+        You rewrite the user's latest question as a fully standalone question using the conversation history.
+        Only clarify what "it", "that", "this", or "they" refer to based on the conversation history.
+        Do NOT add facts or assumptions that are not in the conversation.
+        Do NOT answer the question or change its original meaning.
+        Return only the rewritten question, nothing else."""),
+           ("human",
+            "Conversation history:\n{history}\n\n"
+            "Latest question:\n{question}")
+    ])
+
+    model = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0)
+    chain = rewrite_prompt | model | StrOutputParser()
+    rewritten = chain.invoke({
+        "history": history_text,
+        "question": original_question
+    })
+    print(f"[rewrite] original: {original_question}")
+    print(f"[rewrite] rewritten: {rewritten}")
+    return rewritten
+
+
 def get_conversational_chain():
     prompt=ChatPromptTemplate.from_messages([
-        ('system',"""You are a senior equity research analyst.
+        ('system',"""
+You are an equity research assistant. Answer the user's question 
+using only the provided annual report excerpts. If relevant news 
+exists that supports or contradicts the answer, mention it explicitly. 
+Be factual, cite what the document says, and flag any contradiction 
+with recent news. Never fabricate figures or opinions.
 
-Based on the annual report excerpts and recent news provided, generate a structured research report.
-
-Return ONLY a JSON object with these exact keys (no markdown, no explanation):
-IMPORTANT: Before answering, check whether the "Context" actually contains meaningful annual-report / financial content (business description, financial figures, MD&A, risk factors, etc.).
+IMPORTANT:Before answering, check whether the "Context" actually contains meaningful annual-report / financial content (business description, financial figures, MD&A, risk factors, etc.).
 - If the Context is empty, irrelevant, or does not contain real financial/business content, you MUST NOT invent numbers or a verdict.
+- Never fabricate figures, company facts that are not directly supported by the Context.
 
-- Never fabricate figures, company facts, or a BUY/HOLD/CAUTION verdict that are not directly supported by the Context.
-
-{{
-  "snapshot": "2-3 sentence company overview from the report",
-  "financials": "Key revenue, profit, growth numbers mentioned in the report",
-  "news_sentiment": "Summarize the news tone — positive, negative or mixed and why",
-  "conflict": "Does the news contradict the annual report outlook? Explain specifically.",
-  "risks": ["risk 1", "risk 2", "risk 3"],
-  "verdict": "1 paragraph analyst verdict — BUY / HOLD / CAUTION with reasoning"
-}}"""),
+"""),
         ("human", "Context:\n{context}\n\nRelated_latest_news:\n{Related_latest_news}\n\nQuestion:\n{input}")
     ])
 
@@ -166,15 +195,20 @@ IMPORTANT: Before answering, check whether the "Context" actually contains meani
     return chain
 
 
+
 #Handle Userinput
-def handle_userinput(user_question, vectorstore, company_name, text_chunks):
+def handle_userinput(user_question, vectorstore, company_name, text_chunks, conversation_history=[]):
 
     user_question=str(user_question).strip()
+
+    # rewrite only when there is history
+    retrieval_query = rewrite_query(user_question, conversation_history)
+
     semantic_docs=vectorstore.similarity_search(
-        user_question,
+        retrieval_query,
         k=5
     )
-    query_tokens=user_question.lower().split()
+    query_tokens=retrieval_query.lower().split()
     bm25_obj=bm25_index(text_chunks)
     keyword_matched_docs=bm25_search(bm25_obj,text_chunks, query_tokens,n=5)
     print("semantic doc metadata:", semantic_docs[0].metadata)
@@ -193,7 +227,7 @@ def handle_userinput(user_question, vectorstore, company_name, text_chunks):
     
 
     result=chain.invoke({
-        "input": user_question,
+        "input": retrieval_query,  # rewritten standalone query, not original
         "Related_latest_news": fetched_news,
         "context": context
         })

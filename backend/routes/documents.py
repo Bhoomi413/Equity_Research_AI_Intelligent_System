@@ -41,6 +41,8 @@ def upload_document(
             "file_hash": file_hash,
             "kb_path": existing.kb_path,
             "filename": existing.filename,
+            "document_id": existing.id,
+
         }
  
     #save PDF to disk
@@ -87,6 +89,8 @@ def upload_document(
         "file_hash": file_hash,
         "kb_path": kb_path,
         "filename": file.filename,
+        "document_id": doc.id,
+
     }
  
 
@@ -131,5 +135,33 @@ def delete_document(document_id:int,current_user:User=Depends(get_current_user),
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500,detail="Failed to delete document")
+
+
+@router.get("/documents/download/{document_id}")
+def download_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id,
+    ).first()
+ 
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+ 
+    # build the pdf path from stored info
+    safe_filename = os.path.basename(doc.filename)
+    pdf_path = os.path.join("UploadedPDF", f"user_{current_user.id}", doc.file_hash, safe_filename)
+ 
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF file not found on disk")
+ 
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename=doc.filename,
+    )
 
 

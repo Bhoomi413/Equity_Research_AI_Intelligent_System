@@ -6,6 +6,11 @@ A RAG application designed to ingest multi-page corporate annual reports, cross-
 - User uploads annual report
 - Cross reference with today's news
 - Then form an investment view
+## Tech Stack
+Frontend: Streamlit
+Backend: FastAPI
+RAG input: annual reports + market/news information
+Retrieval Stratergy: BM25 + FAISS, combined using Reciprocal Rank Fusion (RRF, k=60)
 
 ## Technical Decisions
 
@@ -91,7 +96,18 @@ project/
 │   ├── main.py
 │   ├── models.py
 │   ├── database.py
-│   ├── auth.py
+│   ├── oauth2.py
+│   ├── schemas.py
+│   │
+│   ├── routes/
+│   │   ├── auth.py
+│   │   ├── query.py
+│   │   └── documents.py
+│   │
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── auth_utils.py
+│   │
 │   └── rag/
 │       ├── __init__.py
 │       └── rag.py
@@ -101,8 +117,9 @@ project/
 │
 ├── UploadedPDF/
 │   └── <user_id>/
-│       └── <hash_value>
+│       └── <hash_value>/
 │           └── filename.pdf
+│
 ├── knowledgebase/
 │   └── <user_id>/
 │       └── <hash_value>/
