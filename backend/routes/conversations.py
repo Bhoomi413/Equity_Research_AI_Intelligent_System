@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from langchain_community.vectorstores import FAISS
 import pickle
@@ -8,9 +8,16 @@ from ..oauth2 import *
 from ..schemas import *
 from ..models import *
 from backend.rag.rag import handle_userinput,get_vectorstore
+from backend.utils.cache_manager import vectorstore_cache
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+
+
 
 router = APIRouter(tags=['Query'])
 
+ 
+embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 @router.post("/conversations")
 def create_conversation(
@@ -145,7 +152,7 @@ def query_in_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
  
-    #confirm sdocument still exists and belongs to this user — ownership check
+    #confirm document still exists and belongs to this user — ownership check
     doc = db.query(Document).filter(
         Document.id == conversation.document_id,
         Document.user_id == current_user.id,
@@ -153,6 +160,43 @@ def query_in_conversation(
  
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+
+#build unique cache key: scoped to user_id and file_hash (to handle versioning)
+    cache_key= f"user_{current_user.id}:{doc.file_hash}"
+    kb_path=doc.kb_path
+
+    # Check RAM 
+    cached_data = vectorstore_cache.get(cache_key)
+
+    if cached_data:
+        print(f"[RAM Cache Hit] Loaded vectorstore from RAM for key: {cache_key}")
+        vectorstore, text_chunks = cached_data
+    else:
+        print(f"[RAM Cache Miss] Loading vectorstore from disk for path: {kb_path}")
+        try:
+            vectorstore = FAISS.load_local(
+                kb_path, 
+                embeddings_model, 
+                allow_dangerous_deserialization=True
+            )
+
+            chunks_file = os.path.join(kb_path, "chunks.pkl")
+            with open(chunks_file, "rb") as f:
+                text_chunks = pickle.load(f)
+
+            for chunk_id, chunk in enumerate(text_chunks):
+                chunk.metadata["chunk_id"] = chunk_id
+
+            # Store in RAM cache
+            vectorstore_cache.put(cache_key, (vectorstore, text_chunks))
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to load document embeddings: {str(e)}"
+            )
+
  
     # fetch last 5 messages for query rewrite context
     last_messages = (
@@ -168,23 +212,23 @@ def query_in_conversation(
         for m in reversed(last_messages)
     ]
  
-    kb_path = doc.kb_path
-    try:
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-        from langchain_community.vectorstores import FAISS
+    # kb_path = doc.kb_path
+    # try:
+    #     from langchain_community.embeddings import HuggingFaceEmbeddings
+    #     from langchain_community.vectorstores import FAISS
  
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = FAISS.load_local(kb_path, embeddings, allow_dangerous_deserialization=True)
+    #     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    #     vectorstore = FAISS.load_local(kb_path, embeddings, allow_dangerous_deserialization=True)
  
-        chunks_file = os.path.join(kb_path, "chunks.pkl")
-        with open(chunks_file, "rb") as f:
-            text_chunks = pickle.load(f)
+    #     chunks_file = os.path.join(kb_path, "chunks.pkl")
+    #     with open(chunks_file, "rb") as f:
+    #         text_chunks = pickle.load(f)
  
-        for chunk_id, chunk in enumerate(text_chunks):
-            chunk.metadata["chunk_id"] = chunk_id
+    #     for chunk_id, chunk in enumerate(text_chunks):
+    #         chunk.metadata["chunk_id"] = chunk_id
  
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load document embeddings: {str(e)}")
+    # except Exception as e:
+    #     raise HTTPException(status_code=500, detail=f"Failed to load document embeddings: {str(e)}")
  
     # run RAG with history
     try:

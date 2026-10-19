@@ -48,6 +48,32 @@ OCR using Gemini Vision was added under an incorrect assumption about document f
 
 ---
 
+
+### In-Memory Vector Store Caching
+
+Objective: Measure the overhead avoided by caching FAISS vector stores and text chunks in memory instead of repeatedly loading them from disk.
+- Implemented a process-local LRU cache using Python's `threading.Lock` to synchronize cache operations.
+- Configured of maximum capacity of 20 entries and a one-hour time-to-live (TTL).
+- Used user-scoped cache keys based on user ID and document SHA-256 hash to keep cached document entries distinct.
+- Reused cached FAISS vector stores and text chunks on cache hits, avoiding repeated disk loading and deserialization.
+- Loaded vector stores and text chunks from disk on cache misses, then stored them in the cache for subsequent queries.
+- Added cache invalidation when deleting a user's account or document.
+
+**Benchmarking** 
+#### Cache Benchmark Results
+
+| Metric | Disk-Based Loading | RAM Cache Hit |
+|---|---:|---:|
+| Median latency | 8.97 ms | 0.02 ms |
+| Time saved per load | — | 8.95 ms |
+| Speedup | — | 389.26× |
+
+
+Disk-based loading includes FAISS vector-store loading and text-chunk deserialization, against in-memory cache lookups over 30 iterations.
+
+*Note: This benchmark measures vector-store loading and cache-lookup time, not end-to-end query latency. Code in `benchmark_cache.py`*
+
+
 ## Ingestion Pipeline: Evolution & Benchmarking
 
 The ingestion engine processes multi-page corporate annual report containing dense financial statements, multi-column reading flows, and tabular data. 
@@ -73,7 +99,7 @@ Between v1.0 and v2.0, the pipeline underwent significant performance profiling 
 | **123 Pages** | 92.09s | **0.61s** | **151x** |
 **Each PDF was processed 3 times per implementation and the reported value is the arithmetic mean of the three runs.**
 
-### Engineering Decisions & Post-Mortem
+### Engineering Decisions 
 
 #### 1. Transition from `PyMuPDF4LLM` to Native `PyMuPDF`
 * **Initial Hypothesis**: `PyMuPDF4LLM` was chosen to preserve layout and structure of complex PDFs for RAG retrieval.
@@ -107,6 +133,7 @@ project/
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   └── auth_utils.py
+│   │   └── cache_manager.py
 │   │
 │   └── rag/
 │       ├── __init__.py
@@ -127,6 +154,7 @@ project/
 │           ├── index.faiss
 │           └── index.pkl
 │
+├── benchmark_cache.py
 ├── requirements.txt
 ├── .env.example
 └── .gitignore

@@ -6,7 +6,10 @@ from ..database import *
 from ..oauth2 import *
 from ..schemas import *
 from ..models import *
+from fastapi.responses import FileResponse
 from backend.rag.rag import load_pdf, get_text_chunks, handle_userinput, get_vectorstore
+from backend.utils.cache_manager import vectorstore_cache
+
 
 router = APIRouter(tags=['Documents'])
 
@@ -62,8 +65,10 @@ def upload_document(
         print("STEP 2")
         text_chunks = get_text_chunks(raw_docs)
         print("STEP 3")
-        get_vectorstore(text_chunks, False, kb_path )
+        vector_store=get_vectorstore(text_chunks, False, kb_path )
         print("STEP 4")
+        cache_key = f"user_{current_user.id}:{file_hash}"
+        vectorstore_cache.put(cache_key, (vector_store, text_chunks))
     except Exception as e:
         traceback.print_exc()
         import shutil
@@ -125,6 +130,10 @@ def delete_document(document_id:int,current_user:User=Depends(get_current_user),
                 shutil.rmtree(user_pdf_dir)   # remove orphaned PDF
         if os.path.exists(kb_path):
                 shutil.rmtree(kb_path)         #remove partial knowledgebase
+
+        cache_key = f"user_{current_user.id}:{file_hash}"
+        with vectorstore_cache._lock:
+            vectorstore_cache._cache.pop(cache_key, None)
         db.delete(doc)
         db.commit()
 

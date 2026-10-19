@@ -31,6 +31,13 @@ def api_post(path, **kwargs):
         **kwargs,
     )
 
+def api_delete(path, timeout=30):
+    return requests.delete(
+        f"{API_BASE}{path}",
+        headers=auth_headers(),
+        timeout=timeout,
+    )
+
 
 def load_conversation(conversation_id):
     resp = api_get(f"/conversations/{conversation_id}")
@@ -215,6 +222,105 @@ def show_main_app():
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+
+
+        
+        with st.expander("Profile & Account"):
+            st.caption(f"Username: {st.session_state.get('username', '')}")
+
+            st.markdown("**Change Password**")
+
+            with st.form("change_password_form"):
+                current_password = st.text_input(
+                    "Current password",
+                    type="password",
+                )
+                new_password = st.text_input(
+                    "New password",
+                    type="password",
+                )
+                confirm_password = st.text_input(
+                    "Confirm new password",
+                    type="password",
+                )
+
+                change_submitted = st.form_submit_button(
+                    "Change Password",
+                    use_container_width=True,
+                )
+
+            if change_submitted:
+                if not current_password or not new_password or not confirm_password:
+                    st.warning("Please fill in all password fields.")
+                elif len(new_password) < 8:
+                    st.warning("New password must be at least 8 characters.")
+                elif new_password != confirm_password:
+                    st.warning("New passwords do not match.")
+                elif current_password == new_password:
+                    st.warning("Choose a different new password.")
+                else:
+                    try:
+                        resp = api_post(
+                            "/auth/change-password",
+                            json={
+                                "current_password": current_password,
+                                "new_password": new_password,
+                            },
+                        )
+
+                        if resp.status_code == 200:
+                            st.success("Password changed successfully.")
+                        else:
+                            try:
+                                detail = resp.json().get(
+                                    "detail", "Password change failed."
+                                )
+                            except ValueError:
+                                detail = "Password change failed."
+                            st.error(detail)
+
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Request failed: {e}")
+
+            st.divider()
+            st.markdown("**Delete Account**")
+            st.warning(
+                "This permanently deletes your account and associated data."
+            )
+
+            confirm_delete = st.checkbox(
+                "I understand that this action is permanent.",
+                key="confirm_delete_account",
+            )
+
+            if st.button(
+                "Delete My Account",
+                type="primary",
+                use_container_width=True,
+            ):
+                if not confirm_delete:
+                    st.warning("Please confirm before deleting your account.")
+                else:
+                    try:
+                        resp = api_delete("/auth/delete-account")
+
+                        if resp.status_code == 200:
+                            for key in list(st.session_state.keys()):
+                                del st.session_state[key]
+                            st.rerun()
+                        else:
+                            try:
+                                detail = resp.json().get(
+                                    "detail", "Account deletion failed."
+                                )
+                            except ValueError:
+                                detail = "Account deletion failed."
+                            st.error(detail)
+
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Request failed: {e}")
+
+
 
         st.divider()
 

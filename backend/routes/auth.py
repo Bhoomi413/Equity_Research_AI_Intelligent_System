@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, status, HTTPException, Response
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import shutil
+from backend.utils.cache_manager import vectorstore_cache
 
 from ..database import *
 from ..oauth2 import *
@@ -72,7 +73,10 @@ def delete_account(
     db: Session = Depends(get_db),
 ):
     user_id = current_user.id
- 
+
+    vectorstore_cache.clear_user_cache(user_id)
+    print("DELETED ALL THE ASSOCIATED DATA")
+    
     #delete all disk files for this user
     user_pdf_dir = os.path.join("UploadedPDF", f"user_{user_id}")
     user_kb_dir = os.path.join("knowledgebase", f"user_{user_id}")
